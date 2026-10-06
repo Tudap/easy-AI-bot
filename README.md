@@ -1,0 +1,151 @@
+# Single Group AI Bot 🤖
+
+Специализированный, высокопроизводительный Telegram-бот для командной работы в **одной конкретной группе** с мультимодальной моделью `free-gemini-3.1-flash-lite`, поддержкой Tool Calling (вызова функций), топиков форумов и строгой изоляцией доступа.
+
+## 🚀 Стек технологий
+
+- **Node.js (ESM)** + **TypeScript** (строгая типизация)
+- **[grammY](https://grammy.dev/)** — быстрый Telegram Bot фреймворк
+- **[better-sqlite3](https://github.com/WiseLibs/better-sqlite3)** (WAL-режим) — локальная персистентная база данных сообщений и заметок группы
+- **[OpenAI SDK](https://github.com/openai/openai-node)** — клиент для работы с OdiRouter / OpenRouter
+- **Express** — эндпоинт `/health` для мониторинга и health-check
+- **Мультимодальная модель**: `free-gemini-3.1-flash-lite` (текст и анализ фото в едином пайплайне)
+
+---
+
+## 📁 Структура проекта
+
+```text
+single-group-ai-bot/
+├── .env.example               # Образец конфигурационных переменных окружения
+├── package.json               # Зависимости и скрипты запуска (dev, build, start)
+├── tsconfig.json              # Настройки компилятора TypeScript (ESM NodeNext)
+├── src/
+│   ├── index.ts               # Точка входа, запуск grammY, Express health-check, Graceful shutdown
+│   ├── config.ts              # Валидация и экспорт .env переменных, генератор системного промпта
+│   ├── db/
+│   │   └── index.ts           # better-sqlite3 в WAL-режиме: таблицы messages и notes
+│   ├── middlewares/
+│   │   └── group-guard.ts     # Middleware изоляции: доступ разрешен только для ALLOWED_GROUP_ID
+│   ├── handlers/
+│   │   ├── message.ts         # Обработка текста и фото (shouldReply, сбор контекста, ответ)
+│   │   └── command.ts         # Команды группы (/help, /clear, /summary, /notes)
+│   ├── services/
+│   │   ├── ai.ts              # Клиент LLM + итеративный цикл Tool-calling
+│   │   └── reply-chain.ts     # Контекст: цепочка Reply Chain до 5 уровней или одиночный вопрос
+│   ├── skills/
+│   │   ├── index.ts           # Реестр навыков (Tool definitions + Tool executors)
+│   │   ├── web-search.ts      # Навык: поиск в интернете (Tavily / DuckDuckGo)
+│   │   ├── datetime.ts        # Навык: точное время, дата и часовой пояс
+│   │   └── group-notes.ts     # Навык: сохранение и чтение заметок/договоренностей группы
+│   └── utils/
+│       ├── html.ts            # Экранирование и санитизация HTML для Telegram
+│       └── chunker.ts         # Нарезка длинных сообщений (>3900 символов) с задержкой 300 мс
+```
+
+---
+
+## ⚙️ Установка и настройка
+
+1. **Клонируйте репозиторий и установите зависимости:**
+   ```bash
+   npm install
+   ```
+
+2. **Создайте файл `.env` на основе `.env.example`:**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Заполните `.env` своими значениями:**
+   ```env
+   TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+   ALLOWED_GROUP_ID=-1001234567890
+   ODIROUTER_API_KEY=your_odirouter_key
+   ODIROUTER_BASE_URL=https://odirouter.ai/v1
+   MODEL_NAME=free-gemini-3.1-flash-lite
+   PORT=3000
+   DATABASE_PATH=./data/bot.db
+   TAVILY_API_KEY=
+   ```
+
+> 💡 **Как узнать `ALLOWED_GROUP_ID`?**  
+> Добавьте в группу бота `@raw_data_bot` или любого инфо-бота, либо отправьте сообщение и посмотрите `chat.id` в логах. Для супергрупп Telegram ID обычно начинается с `-100...`.
+
+---
+
+## 🏃 Запуск проекта
+
+- **Режим разработки (hot-reload):**
+  ```bash
+  npm run dev
+  ```
+
+- **Сборка TypeScript:**
+  ```bash
+  npm run build
+  ```
+
+- **Запуск в продакшене:**
+  ```bash
+  npm start
+  ```
+
+- **Health-Check:**
+  ```bash
+  curl http://localhost:3000/health
+  ```
+  Возвращает:
+  ```json
+  {
+    "status": "ok",
+    "botUsername": "your_bot",
+    "allowedGroupId": "-1001234567890",
+    "model": "free-gemini-3.1-flash-lite",
+    "uptime": 12.34,
+    "timestamp": "2026-10-06T11:25:00.000Z"
+  }
+  ```
+
+---
+
+## 🧠 Ключевые алгоритмы и особенности
+
+### 1. Строгая изоляция (Group Guard)
+- Все сообщения из личных чатов (private) либо вежливо отклоняются, либо игнорируются.
+- Любые другие группы, кроме `ALLOWED_GROUP_ID`, полностью отсекаются (silent drop).
+
+### 2. Умная фильтрация сообщений (`shouldReply`)
+Бот находится в активной группе и не спамит на чужие разговоры. Реакция происходит **только** если:
+1. Сообщение начинается со знака `/` (команда).
+2. В сообщении или подписи к фото есть тег бота: `@botusername`.
+3. Сообщение отправлено в режиме Reply на любое предыдущее сообщение бота.
+
+### 3. Алгоритм контекста (Reply Chain + Топики)
+- Поддержка forum topics Telegram: контекст изолируется по `threadId = chatId_messageThreadId`.
+- **Без Reply**: Модели передаётся **только** системный промпт и текущий вопрос вида `[Имя]: вопрос`. Старые случайные сообщения из базы не подтягиваются, исключая галлюцинации чужого контекста.
+- **С Reply**: Восстанавливается цепочка сообщений вверх по `reply_to_message` до 5 уровней с разметкой ролей (`assistant` и `[Иван]: user`).
+
+### 4. Мультимодальность (Текст + Фото)
+При отправке фото бот получает ссылку на файл через Telegram API и передаёт в единую модель `free-gemini-3.1-flash-lite` в формате:
+```json
+{
+  "role": "user",
+  "content": [
+    { "type": "text", "text": "[Имя]: Опиши и проанализируй эту схему" },
+    { "type": "image_url", "image_url": { "url": "https://api.telegram.org/file/bot..." } }
+  ]
+}
+```
+
+### 5. Система навыков (Tool Calling)
+Модель автоматически вызывает зарегистрированные инструменты:
+- `get_current_datetime`: точное текущее время и таймзона.
+- `web_search`: поиск актуальной информации (Tavily или DuckDuckGo fallback).
+- `save_group_note`: сохранение заметок, задач и договорённостей команды в SQLite.
+- `get_group_notes`: чтение сохранённых заметок группы.
+
+### 6. Безопасность и форматирование
+- Преобразование Markdown в безопасный Telegram HTML с экранированием тегов `<, >, &`.
+- Разбиение длинных сообщений (>3900 символов) с задержкой 300 мс между частями для защиты от `429 Too Many Requests`.
+- Автоматическая отправка действия `typing`.
