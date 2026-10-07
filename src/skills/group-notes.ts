@@ -110,3 +110,44 @@ export async function executeGetGroupNotes(
     })),
   });
 }
+
+export const deleteGroupNoteToolDefinition: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'delete_group_note',
+    description: 'Удалить выполненную задачу, устаревшую договоренность или заметку из базы знаний группы по её ключу/хэштегу.',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: {
+          type: 'string',
+          description: 'Ключ или хэштег заметки/задачи со знаком # перед ним для удаления (например, "#деплой", "#дизайн", "#баг")',
+        },
+      },
+      required: ['key'],
+    },
+  },
+};
+
+export async function executeDeleteGroupNote(
+  groupId: string,
+  args: { key: string }
+): Promise<string> {
+  const key = normalizeNoteKey(args.key || '');
+  if (!key) {
+    return JSON.stringify({ success: false, error: 'Ключ (#хэштег) заметки для удаления обязателен.' });
+  }
+
+  const deleted = dbService.deleteNote(groupId, key);
+  if (!deleted) {
+    return JSON.stringify({
+      success: false,
+      message: `Заметка с ключом «${key}» не найдена в базе знаний группы.`,
+    });
+  }
+
+  return JSON.stringify({
+    success: true,
+    message: `Заметка «${key}» успешно удалена из базы знаний группы.`,
+  });
+}

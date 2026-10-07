@@ -1,5 +1,5 @@
 import type { Context } from 'grammy';
-import { dbService } from '../db/index.js';
+import { dbService, normalizeNoteKey } from '../db/index.js';
 import { formatUserName, getThreadId } from '../services/reply-chain.js';
 import { generateAIResponse } from '../services/ai.js';
 import { formatAIResponseToHTML } from '../utils/html.js';
@@ -23,6 +23,7 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     `• <code>/help</code> — Справка по работе с ботом`,
     `• <code>/summary</code> — Краткая выжимка недавних обсуждений в этом топике`,
     `• <code>/notes</code> — Список сохранённых заметок и договорённостей группы`,
+    `• <code>/delnote #ключ</code> — Удалить выполненную задачу или заметку`,
     `• <code>/clear</code> — Очистить сохранённый контекст диалога в этом топике`,
     ``,
     `<b>Встроенные навыки:</b>`,
@@ -120,3 +121,43 @@ export async function handleSummaryCommand(ctx: Context): Promise<void> {
     });
   }
 }
+
+export async function handleDeleteNoteCommand(ctx: Context): Promise<void> {
+  const groupId = ctx.chat?.id.toString() || '';
+  const text = ctx.message?.text || '';
+  const parts = text.trim().split(/\s+/);
+  const rawKey = parts.slice(1).join(' ').trim();
+
+  if (!rawKey) {
+    await ctx.reply(
+      'ℹ️ Укажите ключ заметки или задачи для удаления.\n<i>Пример:</i> <code>/delnote #деплой</code>',
+      {
+        parse_mode: 'HTML',
+        reply_parameters: ctx.message?.message_id ? { message_id: ctx.message.message_id } : undefined,
+      }
+    );
+    return;
+  }
+
+  const key = normalizeNoteKey(rawKey);
+  const deleted = dbService.deleteNote(groupId, key);
+
+  if (deleted) {
+    await ctx.reply(
+      `🗑 Заметка <b>${key}</b> успешно удалена из базы знаний группы.`,
+      {
+        parse_mode: 'HTML',
+        reply_parameters: ctx.message?.message_id ? { message_id: ctx.message.message_id } : undefined,
+      }
+    );
+  } else {
+    await ctx.reply(
+      `⚠️ Заметка с ключом <b>${key}</b> не найдена в базе знаний группы.`,
+      {
+        parse_mode: 'HTML',
+        reply_parameters: ctx.message?.message_id ? { message_id: ctx.message.message_id } : undefined,
+      }
+    );
+  }
+}
+

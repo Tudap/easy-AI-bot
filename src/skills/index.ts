@@ -2,6 +2,8 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { datetimeToolDefinition, executeGetCurrentDatetime } from './datetime.js';
 import { executeWebSearch, webSearchToolDefinition } from './web-search.js';
 import {
+  deleteGroupNoteToolDefinition,
+  executeDeleteGroupNote,
   executeGetGroupNotes,
   executeSaveGroupNote,
   getGroupNotesToolDefinition,
@@ -13,6 +15,7 @@ export const availableTools: ChatCompletionTool[] = [
   webSearchToolDefinition,
   saveGroupNoteToolDefinition,
   getGroupNotesToolDefinition,
+  deleteGroupNoteToolDefinition,
 ];
 
 export interface ToolExecutionContext {
@@ -48,6 +51,11 @@ export async function executeTool(
     case 'get_group_notes':
       return executeGetGroupNotes(context.groupId, {
         key: parsedArgs.key,
+      });
+
+    case 'delete_group_note':
+      return executeDeleteGroupNote(context.groupId, {
+        key: parsedArgs.key || '',
       });
 
     default:

@@ -5,6 +5,7 @@ import { dbService } from './db/index.js';
 import { groupGuard } from './middlewares/group-guard.js';
 import {
   handleClearCommand,
+  handleDeleteNoteCommand,
   handleHelpCommand,
   handleNotesCommand,
   handleSummaryCommand,
@@ -22,6 +23,7 @@ bot.command('help', handleHelpCommand);
 bot.command('start', handleHelpCommand);
 bot.command('clear', handleClearCommand);
 bot.command('notes', handleNotesCommand);
+bot.command(['delnote', 'del', 'done'], handleDeleteNoteCommand);
 bot.command('summary', handleSummaryCommand);
 
 // 4. Регистрация обработчика входящих сообщений (текст и фото)

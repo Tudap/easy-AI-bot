@@ -75,7 +75,7 @@ export async function handleIncomingMessage(ctx: Context): Promise<void> {
   // но начинается с /, и не содержит упоминания - пропускаем, если не наш случай
   if (message.text?.startsWith('/') && !message.text.includes(`@${botUsername}`)) {
     const commandName = message.text.split(' ')[0].replace('/', '');
-    const knownCommands = ['help', 'clear', 'summary', 'notes'];
+    const knownCommands = ['help', 'start', 'clear', 'summary', 'notes', 'delnote', 'del', 'done'];
     if (knownCommands.includes(commandName)) {
       // Уже обработано в command.ts
       return;
