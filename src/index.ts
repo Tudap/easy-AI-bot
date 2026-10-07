@@ -8,9 +8,11 @@ import {
   handleDeleteNoteCommand,
   handleHelpCommand,
   handleNotesCommand,
+  handleStatusCommand,
   handleSummaryCommand,
 } from './handlers/command.js';
 import { handleIncomingMessage } from './handlers/message.js';
+import { getModelPoolStatus } from './services/ai.js';
 
 // 1. Инициализация Telegram-бота
 export const bot = new Bot(config.TELEGRAM_BOT_TOKEN);
@@ -24,6 +26,7 @@ bot.command('start', handleHelpCommand);
 bot.command('clear', handleClearCommand);
 bot.command('notes', handleNotesCommand);
 bot.command(['delnote', 'del', 'done'], handleDeleteNoteCommand);
+bot.command(['status', 'model', 'models'], handleStatusCommand);
 bot.command('summary', handleSummaryCommand);
 
 // 4. Регистрация обработчика входящих сообщений (текст и фото)
@@ -40,11 +43,15 @@ const app = express();
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
+  const pool = getModelPoolStatus();
   res.status(200).json({
     status: 'ok',
     botUsername: bot.botInfo?.username ?? 'unknown',
     allowedGroupId: config.ALLOWED_GROUP_ID,
-    model: config.MODEL_NAME,
+    primaryModel: config.MODEL_NAME,
+    models: pool.models,
+    totalUsedToday: pool.totalUsed,
+    totalDailyLimit: pool.totalLimit,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });

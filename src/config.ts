@@ -17,10 +17,20 @@ export const config = {
   ODIROUTER_API_KEY: getEnvOrThrow('ODIROUTER_API_KEY'),
   ODIROUTER_BASE_URL: process.env.ODIROUTER_BASE_URL?.trim() || 'https://odirouter.ai/v1',
   MODEL_NAME: process.env.MODEL_NAME?.trim() || 'free-gemini-3.1-flash-lite',
+  FALLBACK_MODELS: (process.env.FALLBACK_MODELS || 'free-gemini-2.5-flash,free-gemini-3-flash-preview')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean),
+  DAILY_LIMIT_PER_MODEL: Number.parseInt(process.env.DAILY_LIMIT_PER_MODEL || '100', 10),
   PORT: Number.parseInt(process.env.PORT || '3000', 10),
   DATABASE_PATH: process.env.DATABASE_PATH?.trim() || path.resolve(process.cwd(), 'data', 'bot.db'),
   TAVILY_API_KEY: process.env.TAVILY_API_KEY?.trim() || '',
 };
+
+export function getAllConfiguredModels(): string[] {
+  const models = [config.MODEL_NAME, ...config.FALLBACK_MODELS];
+  return Array.from(new Set(models));
+}
 
 export function buildSystemPrompt(groupTitle: string, currentUserName: string): string {
   return [

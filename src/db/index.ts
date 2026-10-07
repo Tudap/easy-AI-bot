@@ -41,6 +41,13 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id);
+
+  CREATE TABLE IF NOT EXISTS model_daily_usage (
+    model TEXT NOT NULL,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (model, day)
+  );
 `);
 
 export interface StoredMessage {
@@ -100,6 +107,34 @@ const listNotesStmt = db.prepare(`
 const deleteNoteStmt = db.prepare(`
   DELETE FROM notes WHERE group_id = ? AND key = ?
 `);
+
+const getModelUsageStmt = db.prepare(`
+  SELECT count FROM model_daily_usage WHERE model = ? AND day = ? LIMIT 1
+`);
+
+const incrementModelUsageStmt = db.prepare(`
+  INSERT INTO model_daily_usage (model, day, count)
+  VALUES (?, ?, 1)
+  ON CONFLICT(model, day) DO UPDATE SET count = count + 1
+`);
+
+const setModelUsageStmt = db.prepare(`
+  INSERT INTO model_daily_usage (model, day, count)
+  VALUES (?, ?, ?)
+  ON CONFLICT(model, day) DO UPDATE SET count = excluded.count
+`);
+
+const listModelUsageForDayStmt = db.prepare(`
+  SELECT model, count FROM model_daily_usage WHERE day = ?
+`);
+
+export function getTodayDateKey(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export function normalizeNoteKey(rawKey: string): string {
   let cleaned = (rawKey || '').trim().toLowerCase();
@@ -175,6 +210,29 @@ export const dbService = {
     if (!normalizedKey) return false;
     const result = deleteNoteStmt.run(groupId, normalizedKey);
     return result.changes > 0;
+  },
+
+  getModelUsage(model: string, day = getTodayDateKey()): number {
+    const row = getModelUsageStmt.get(model, day) as { count: number } | undefined;
+    return row ? row.count : 0;
+  },
+
+  incrementModelUsage(model: string, day = getTodayDateKey()): number {
+    incrementModelUsageStmt.run(model, day);
+    return this.getModelUsage(model, day);
+  },
+
+  setModelUsage(model: string, count: number, day = getTodayDateKey()): void {
+    setModelUsageStmt.run(model, day, count);
+  },
+
+  getAllModelUsageForDay(day = getTodayDateKey()): Record<string, number> {
+    const rows = listModelUsageForDayStmt.all(day) as { model: string; count: number }[];
+    const result: Record<string, number> = {};
+    for (const r of rows) {
+      result[r.model] = r.count;
+    }
+    return result;
   },
 
   close(): void {

@@ -1,7 +1,7 @@
 import type { Context } from 'grammy';
 import { dbService, normalizeNoteKey } from '../db/index.js';
 import { formatUserName, getThreadId } from '../services/reply-chain.js';
-import { generateAIResponse } from '../services/ai.js';
+import { generateAIResponse, getModelPoolStatus } from '../services/ai.js';
 import { formatAIResponseToHTML } from '../utils/html.js';
 import { sendLongMessage } from '../utils/chunker.js';
 
@@ -21,6 +21,7 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     ``,
     `<b>Команды:</b>`,
     `• <code>/help</code> — Справка по работе с ботом`,
+    `• <code>/status</code> — Статус моделей, лимитов запросов и активной модели`,
     `• <code>/summary</code> — Краткая выжимка недавних обсуждений в этом топике`,
     `• <code>/notes</code> — Список сохранённых заметок и договорённостей группы`,
     `• <code>/delnote #ключ</code> — Удалить выполненную задачу или заметку`,
@@ -160,4 +161,39 @@ export async function handleDeleteNoteCommand(ctx: Context): Promise<void> {
     );
   }
 }
+
+export async function handleStatusCommand(ctx: Context): Promise<void> {
+  const poolStatus = getModelPoolStatus();
+  const lines = [
+    `📊 <b>Статус AI-моделей и лимитов на сегодня</b> (<code>${poolStatus.date}</code>):`,
+    '',
+  ];
+
+  for (const m of poolStatus.models) {
+    const roleTag = m.isPrimary ? ' ⭐ <i>(основная)</i>' : ' 🔄 <i>(резерв)</i>';
+    let statusIcon = '🟢';
+    let statusText = 'готов';
+    if (m.status === 'active') {
+      statusIcon = '⚡';
+      statusText = 'активна сейчас';
+    } else if (m.status === 'exhausted') {
+      statusIcon = '🔴';
+      statusText = 'лимит исчерпан';
+    }
+
+    lines.push(
+      `${statusIcon} <code>${m.model}</code>${roleTag}\n   Использовано: <b>${m.usedToday}/${m.limit}</b> [${statusText}]`
+    );
+  }
+
+  lines.push('');
+  lines.push(`📈 Всего использовано: <b>${poolStatus.totalUsed}/${poolStatus.totalLimit}</b> запросов.`);
+  lines.push('💡 <i>В начале каждых суток (00:00) счётчики обнуляются и бот возвращается на основную модель. При исчерпании лимита или недоступности модели переключение происходит автоматически.</i>');
+
+  await ctx.reply(lines.join('\n'), {
+    parse_mode: 'HTML',
+    reply_parameters: ctx.message?.message_id ? { message_id: ctx.message.message_id } : undefined,
+  });
+}
+
 

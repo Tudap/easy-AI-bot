@@ -64,6 +64,8 @@ single-group-ai-bot/
    ODIROUTER_API_KEY=your_odirouter_key
    ODIROUTER_BASE_URL=https://odirouter.ai/v1
    MODEL_NAME=free-gemini-3.1-flash-lite
+   FALLBACK_MODELS=free-gemini-2.5-flash,free-gemini-3-flash-preview
+   DAILY_LIMIT_PER_MODEL=100
    PORT=3000
    DATABASE_PATH=./data/bot.db
    TAVILY_API_KEY=
@@ -101,9 +103,16 @@ single-group-ai-bot/
     "status": "ok",
     "botUsername": "your_bot",
     "allowedGroupId": "-1001234567890",
-    "model": "free-gemini-3.1-flash-lite",
+    "primaryModel": "free-gemini-3.1-flash-lite",
+    "models": [
+      { "model": "free-gemini-3.1-flash-lite", "isPrimary": true, "usedToday": 15, "limit": 100, "status": "active" },
+      { "model": "free-gemini-2.5-flash", "isPrimary": false, "usedToday": 0, "limit": 100, "status": "standby" },
+      { "model": "free-gemini-3-flash-preview", "isPrimary": false, "usedToday": 0, "limit": 100, "status": "standby" }
+    ],
+    "totalUsedToday": 15,
+    "totalDailyLimit": 300,
     "uptime": 12.34,
-    "timestamp": "2026-10-06T11:25:00.000Z"
+    "timestamp": "2026-10-07T11:25:00.000Z"
   }
   ```
 
@@ -159,3 +168,16 @@ single-group-ai-bot/
 - Преобразование Markdown в безопасный Telegram HTML с экранированием тегов `<, >, &`.
 - Разбиение длинных сообщений (>3900 символов) с задержкой 300 мс между частями для защиты от `429 Too Many Requests`.
 - Автоматическая отправка действия `typing`.
+
+### 7. Пул моделей, лимит 100 запросов/сутки и автоматический Failover
+- **Суточный лимит и учёт в SQLite**: бесплатные модели OdiRouter ограничены 100 запросами в сутки. Бот автоматически ведёт подсчёт отправленных запросов по каждой модели в базе данных SQLite на текущую дату (`YYYY-MM-DD`).
+- **Пул моделей (`.env`)**:
+  - `MODEL_NAME`: основная модель (по умолчанию `free-gemini-3.1-flash-lite`).
+  - `FALLBACK_MODELS`: список резервных моделей через запятую (например, `free-gemini-2.5-flash,free-gemini-3-flash-preview`).
+  - `DAILY_LIMIT_PER_MODEL`: лимит запросов на каждую модель в сутки (по умолчанию `100`).
+- **Автоматический Failover (переключение)**:
+  1. *По исчерпанию лимита*: как только текущая модель достигает 100 запросов за сутки, бот бесшовно переключается на следующую резервную модель.
+  2. *По ошибке / недоступности*: если модель возвращает ошибку (таймаут, 429, 503, upstream service unavailable), бот не возвращает пользователю ошибку соединения, а мгновенно повторяет запрос через резервную модель из пула.
+- **Автоматический сброс в полночь**: в 00:00 календарные сутки сменяются, счётчики за новый день начинаются с 0, и бот автоматически возвращается к основной модели.
+- **Команда `/status`**: выводит интерактивную сводку по текущему статусу моделей, расходу квот и активной модели на сегодня.
+
